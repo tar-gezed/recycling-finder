@@ -80,8 +80,10 @@
               Materials: {{ getRecyclingMaterials(marker.tags).join(', ') }}
             </li>
           </ul>
-          <a :href="`geo:${marker.lat},${marker.lon}`" target="_blank"
-            >Open on maps</a
+          <a
+            :href="`https://www.google.com/maps/search/?api=1&query=${marker.lat},${marker.lon}`"
+            target="_blank"
+            >>Open on maps</a
           >
         </l-popup>
       </l-marker>
