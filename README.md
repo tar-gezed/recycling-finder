@@ -1,6 +1,6 @@
-# toilet-finder
+# Recycling Finder
 
-This template should help get you started developing with Vue 3 in Vite.
+A simple web application to find recycling centers and containers near you.
 
 ## Recommended IDE Setup
 

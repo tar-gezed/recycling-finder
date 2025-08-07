@@ -31,29 +31,20 @@
                 <li class="options-item">
                   <input
                     type="checkbox"
-                    id="free"
-                    value="fee_no"
+                    id="recycling_type_container"
+                    value="recycling_type_container"
                     v-model="checkedOptions"
                   />
-                  <label for="free">Free only</label>
+                  <label for="recycling_type_container">Container</label>
                 </li>
                 <li class="options-item">
                   <input
                     type="checkbox"
-                    id="wheelchair"
-                    value="wheelchair"
+                    id="recycling_type_centre"
+                    value="recycling_type_centre"
                     v-model="checkedOptions"
                   />
-                  <label for="wheelchair">Wheelchair ?</label>
-                </li>
-                <li class="options-item">
-                  <input
-                    type="checkbox"
-                    id="drinking_water"
-                    value="drinking_water"
-                    v-model="checkedOptions"
-                  />
-                  <label for="drinking_water">Drinking water ?</label>
+                  <label for="recycling_type_centre">Recycling centre</label>
                 </li>
               </ul>
             </div>
@@ -73,17 +64,25 @@
       />
 
       <l-marker
-        v-for="{ tags, lat, lon, id } in mapState?.toiletMarkers"
-        :key="id"
-        :lat-lng="[lat, lon]"
+        v-for="marker in mapState?.recyclingMarkers"
+        :key="marker.id"
+        :lat-lng="[marker.lat, marker.lon]"
       >
-        <l-popup v-if="tags">
+        <l-popup v-if="marker.tags">
           <ul>
-            <li v-for="(tagValue, tagKey) in tags">
-              {{ tagKey }}: {{ tagValue }}
+            <li v-if="marker.tags.name">
+              {{ marker.tags.name }}
+            </li>
+            <li v-if="marker.tags.recycling_type">
+              Type: {{ marker.tags.recycling_type }}
+            </li>
+            <li v-if="getRecyclingMaterials(marker.tags).length > 0">
+              Materials: {{ getRecyclingMaterials(marker.tags).join(', ') }}
             </li>
           </ul>
-          <a :href="`geo:${lat},${lon}`" target="_blank">Open on maps</a>
+          <a :href="`geo:${marker.lat},${marker.lon}`" target="_blank"
+            >Open on maps</a
+          >
         </l-popup>
       </l-marker>
     </l-map>
@@ -239,7 +238,7 @@ import { defineComponent, watch } from "vue";
 import type { PropType } from "vue";
 import axios from "axios";
 import { debounce } from "lodash";
-import OverpassApi, { type OverpassElement } from "../services/overpass-api";
+import OverpassApi, { type OverpassElement, type OverpassTags } from "../services/overpass-api";
 import { ref, reactive } from "vue";
 import { computed, type Ref } from "@vue/reactivity";
 import L, { divIcon, icon } from "leaflet";
@@ -247,7 +246,7 @@ import SpinnerComponent from "./SpinnerComponent.vue";
 import { useToast } from 'vue-toastification';
 
 const mapLeaflet = ref(null);
-const checkedOptions: Ref<string[]> = ref(["fee_no"]);
+const checkedOptions: Ref<string[]> = ref(["recycling_type_container", "recycling_type_centre"]);
 const showOption = ref(false);
 const showCurrentLocation = ref(false);
 let loadingMarkers = ref(false);
@@ -273,7 +272,7 @@ const mapState = reactive({
   userCoords: {} as GeolocationPosition,
   bounds: null,
   map: {},
-  toiletMarkers: [] as OverpassElement[],
+  recyclingMarkers: [] as OverpassElement[],
 });
 
 const toast = useToast();
@@ -289,6 +288,12 @@ const iconUrl = computed(() => {
 const iconSize = computed(() => {
   return [iconWidth, iconHeight];
 });
+
+const getRecyclingMaterials = (tags: OverpassTags) => {
+  return Object.keys(tags)
+    .filter((key) => key.startsWith("recycling:") && tags[key] === "yes")
+    .map((key) => key.replace("recycling:", ""));
+};
 
 const log = (a: any) => {
   console.log(a);
@@ -315,7 +320,7 @@ const onLoad = (event: any) => {
       const latLon = L.latLng(position.coords.latitude,  position.coords.longitude);
       (mapState.map as any).setView(latLon, mapState.zoom);
       updatePosition(position);
-      loadToiletMarkers((mapState.map as any).getBounds());
+      loadRecyclingMarkers((mapState.map as any).getBounds());
     }, errorGetLocation);
 
     watchLocationID = navigator.geolocation.watchPosition((position) => {
@@ -326,14 +331,14 @@ const onLoad = (event: any) => {
   }
 };
 
-const loadToiletMarkers = async (bounds: any) => {
+const loadRecyclingMarkers = async (bounds: any) => {
   mapState.bounds = bounds;
   loadingMarkers.value = true;
-  const newMarkers = await OverpassApi.searchToiletSpots(
+  const newMarkers = await OverpassApi.searchRecyclingSpots(
     bounds,
     checkedOptions
   );
-  mapState.toiletMarkers =  newMarkers.length > 0 ? newMarkers : mapState.toiletMarkers;
+  mapState.recyclingMarkers =  newMarkers.length > 0 ? newMarkers : mapState.recyclingMarkers;
   loadingMarkers.value = false;
 };
 
@@ -353,7 +358,7 @@ const errorAuthorizeLocation = () => {
   toast.error("Error Location Not Authorized");
 };
 
-const boundsUpdated = debounce(loadToiletMarkers, 3000);
+const boundsUpdated = debounce(loadRecyclingMarkers, 3000);
 
 watch(checkedOptions, () => boundsUpdated((mapState.map as any).getBounds()));
 </script>
