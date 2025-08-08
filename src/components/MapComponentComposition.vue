@@ -29,22 +29,34 @@
             <div class="options" v-show="showOption">
               <ul class="options-list">
                 <li class="options-item">
-                  <input
-                    type="checkbox"
-                    id="recycling_type_container"
-                    value="recycling_type_container"
-                    v-model="checkedOptions"
-                  />
-                  <label for="recycling_type_container">Container</label>
+                  <label class="switch">
+                    <input
+                      type="checkbox"
+                      id="recycling_type_container"
+                      value="recycling_type_container"
+                      v-model="checkedOptions"
+                    />
+                    <span class="slider round"></span>
+                  </label>
+                  <label for="recycling_type_container" class="switch-label">
+                    <svg-icon type="mdi" :path="mdiTrashCanOutline"></svg-icon>
+                    Container
+                  </label>
                 </li>
                 <li class="options-item">
-                  <input
-                    type="checkbox"
-                    id="recycling_type_centre"
-                    value="recycling_type_centre"
-                    v-model="checkedOptions"
-                  />
-                  <label for="recycling_type_centre">Recycling centre</label>
+                  <label class="switch">
+                    <input
+                      type="checkbox"
+                      id="recycling_type_centre"
+                      value="recycling_type_centre"
+                      v-model="checkedOptions"
+                    />
+                    <span class="slider round"></span>
+                  </label>
+                  <label for="recycling_type_centre" class="switch-label">
+                    <svg-icon type="mdi" :path="mdiFactory"></svg-icon>
+                    Recycling centre
+                  </label>
                 </li>
               </ul>
             </div>
@@ -77,7 +89,7 @@
               Type: {{ marker.tags.recycling_type }}
             </li>
             <li v-if="getRecyclingMaterials(marker.tags).length > 0">
-              Materials: {{ getRecyclingMaterials(marker.tags).join(', ') }}
+              Materials: {{ getRecyclingMaterials(marker.tags).join(", ") }}
             </li>
           </ul>
           <a
@@ -114,6 +126,8 @@
 
 .loading-text {
   text-align: center;
+  color: #fff;
+  margin-bottom: 12px;
 }
 
 .map-container {
@@ -139,8 +153,83 @@
   font-size: medium;
 }
 
-.options-item input {
-  margin-right: 12px;
+.options-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.switch-label {
+  margin-left: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.switch-label svg {
+  margin-right: 8px;
+}
+
+/* The switch - the box around the slider */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+/* Hide default HTML checkbox */
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+/* The slider */
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  -webkit-transition: 0.4s;
+  transition: 0.4s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  -webkit-transition: 0.4s;
+  transition: 0.4s;
+}
+
+input:checked + .slider {
+  background-color: #0094fc;
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px #0094fc;
+}
+
+input:checked + .slider:before {
+  -webkit-transform: translateX(26px);
+  -ms-transform: translateX(26px);
+  transform: translateX(26px);
+}
+
+/* Rounded sliders */
+.slider.round {
+  border-radius: 34px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
 }
 
 .toggle-menu {
@@ -223,35 +312,35 @@
 <script setup lang="ts">
 import {
   LMap,
-  LIcon,
   LTileLayer,
   LMarker,
   LCircle,
-  LControlLayers,
-  LTooltip,
   LControl,
   LPopup,
-  LPolyline,
-  LPolygon,
-  LRectangle,
 } from "@vue-leaflet/vue-leaflet";
 import "leaflet/dist/leaflet.css";
-import { defineComponent, watch } from "vue";
-import type { PropType } from "vue";
-import axios from "axios";
+import { watch } from "vue";
 import { debounce } from "lodash";
-import OverpassApi, { type OverpassElement, type OverpassTags } from "../services/overpass-api";
+import OverpassApi, {
+  type OverpassElement,
+  type OverpassTags,
+} from "../services/overpass-api";
 import { ref, reactive } from "vue";
-import { computed, type Ref } from "@vue/reactivity";
-import L, { divIcon, icon } from "leaflet";
+import type { Ref } from "vue";
+import L, { divIcon } from "leaflet";
 import SpinnerComponent from "./SpinnerComponent.vue";
-import { useToast } from 'vue-toastification';
+import { useToast } from "vue-toastification";
+import SvgIcon from "@jamescoyle/vue-icon";
+import { mdiFactory, mdiTrashCanOutline } from "@mdi/js";
 
 const mapLeaflet = ref(null);
-const checkedOptions: Ref<string[]> = ref(["recycling_type_container", "recycling_type_centre"]);
+const checkedOptions: Ref<string[]> = ref([
+  "recycling_type_container",
+  "recycling_type_centre",
+]);
 const showOption = ref(false);
 const showCurrentLocation = ref(false);
-let loadingMarkers = ref(false);
+const loadingMarkers = ref(false);
 
 const userIcon = divIcon({
   html: `
@@ -279,36 +368,12 @@ const mapState = reactive({
 
 const toast = useToast();
 
-let iconWidth = 25;
-let iconHeight = 40;
 let watchLocationID = 0;
-
-const iconUrl = computed(() => {
-  return `https://placekitten.com/${iconWidth}/${iconHeight}`;
-});
-
-const iconSize = computed(() => {
-  return [iconWidth, iconHeight];
-});
 
 const getRecyclingMaterials = (tags: OverpassTags) => {
   return Object.keys(tags)
     .filter((key) => key.startsWith("recycling:") && tags[key] === "yes")
     .map((key) => key.replace("recycling:", ""));
-};
-
-const log = (a: any) => {
-  console.log(a);
-};
-
-const changeIcon = () => {
-  console.log("toto", mapState.userCoords);
-  mapState.latitude = 1;
-  mapState.longitude = 1;
-  iconWidth += 2;
-  if (iconWidth > iconHeight) {
-    iconWidth = Math.floor(iconHeight / 2);
-  }
 };
 
 const onLoad = (event: any) => {
@@ -319,7 +384,10 @@ const onLoad = (event: any) => {
     // Geolocation available
     window.navigator.geolocation.getCurrentPosition((position) => {
       console.log(position);
-      const latLon = L.latLng(position.coords.latitude,  position.coords.longitude);
+      const latLon = L.latLng(
+        position.coords.latitude,
+        position.coords.longitude
+      );
       (mapState.map as any).setView(latLon, mapState.zoom);
       updatePosition(position);
       loadRecyclingMarkers((mapState.map as any).getBounds());
@@ -340,7 +408,8 @@ const loadRecyclingMarkers = async (bounds: any) => {
     bounds,
     checkedOptions
   );
-  mapState.recyclingMarkers =  newMarkers.length > 0 ? newMarkers : mapState.recyclingMarkers;
+  mapState.recyclingMarkers =
+    newMarkers.length > 0 ? newMarkers : mapState.recyclingMarkers;
   loadingMarkers.value = false;
 };
 
@@ -360,7 +429,10 @@ const errorAuthorizeLocation = () => {
   toast.error("Error Location Not Authorized");
 };
 
-const boundsUpdated = debounce(loadRecyclingMarkers, 3000, { 'leading': true, 'trailing': true });
+const boundsUpdated = debounce(loadRecyclingMarkers, 3000, {
+  leading: true,
+  trailing: true,
+});
 
 watch(checkedOptions, () => boundsUpdated((mapState.map as any).getBounds()));
 </script>

@@ -23,7 +23,8 @@ export default defineConfig({
       manifest: {
         name: "Recycling Finder",
         short_name: "RF",
-        description: "An application to find recycling centers thanks to OpenStreetMap",
+        description:
+          "An application to find recycling centers thanks to OpenStreetMap",
         icons: [
           {
             src: "/recycling-finder/android-chrome-192x192.png",
