@@ -2,11 +2,15 @@
 require("@rushstack/eslint-patch/modern-module-resolution");
 
 module.exports = {
-  "root": true,
-  "extends": [
+  root: true,
+  extends: [
     "plugin:vue/vue3-essential",
     "eslint:recommended",
     "@vue/eslint-config-typescript/recommended",
-    "@vue/eslint-config-prettier"
-  ]
-}
+    "@vue/eslint-config-prettier",
+  ],
+  rules: {
+    // This line enforces LF line endings for prettier
+    "prettier/prettier": ["error", { endOfLine: "lf" }],
+  },
+};

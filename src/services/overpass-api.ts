@@ -1,8 +1,7 @@
 import axios from "axios";
 import type { LatLng } from "leaflet";
-import type { Ref } from 'vue';
-import { useToast } from 'vue-toastification';
-
+import type { Ref } from "vue";
+import { useToast } from "vue-toastification";
 
 export type OverpassBounds = {
   south: number;
@@ -28,11 +27,15 @@ export type OverpassTags = {
   opening_hours?: string;
   image?: string;
   wikimedia_commons?: string;
-  recycling_type?: 'center' | 'container';
+  recycling_type?: "center" | "container";
   [key: string]: any;
 };
 
-export type OverpassOptions = "fee_no" | "wheelchair" | "recycling_type_centre" | "recycling_type_container";
+export type OverpassOptions =
+  | "fee_no"
+  | "wheelchair"
+  | "recycling_type_centre"
+  | "recycling_type_container";
 
 export default {
   searchRecyclingSpots(bounds: any, options?: Ref<string[]>) {
@@ -68,7 +71,9 @@ export default {
         console.log("RESPONSE", response);
         return response.data?.elements;
       })
-      .catch((err) => {toast.error(err?.message); return []});
+      .catch((err) => {
+        toast.error(err?.message);
+        return [];
+      });
   },
 };
-

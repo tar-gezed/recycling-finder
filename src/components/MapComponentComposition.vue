@@ -326,7 +326,7 @@ import OverpassApi, {
   type OverpassTags,
 } from "../services/overpass-api";
 import { ref, reactive } from "vue";
-import type { Ref } from "vue"; 
+import type { Ref } from "vue";
 import L, { divIcon } from "leaflet";
 import SpinnerComponent from "./SpinnerComponent.vue";
 import { useToast } from "vue-toastification";
