@@ -2,7 +2,7 @@
   "name": "recycling-finder",
   "version": "0.0.1",
   "scripts": {
-    "dev": "vite --port 3000",
+    "dev": "vite",
     "build": "run-p type-check build-only",
     "preview": "vite preview --port 4173",
     "test:unit": "vitest --environment jsdom",
