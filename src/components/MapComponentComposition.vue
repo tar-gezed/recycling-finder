@@ -360,7 +360,7 @@ const errorAuthorizeLocation = () => {
   toast.error("Error Location Not Authorized");
 };
 
-const boundsUpdated = debounce(loadRecyclingMarkers, 3000);
+const boundsUpdated = debounce(loadRecyclingMarkers, 3000, { 'leading': true, 'trailing': true });
 
 watch(checkedOptions, () => boundsUpdated((mapState.map as any).getBounds()));
 </script>
