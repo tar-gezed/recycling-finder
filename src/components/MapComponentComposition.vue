@@ -63,6 +63,15 @@
           </transition>
         </div>
       </l-control>
+      <l-control position="bottomright">
+        <button
+          @click="centerOnUser"
+          class="locate-button"
+          title="Me localiser"
+        >
+          <svg-icon type="mdi" :path="mdiCrosshairsGps"></svg-icon>
+        </button>
+      </l-control>
 
       <l-marker
         :lat-lng="[mapState.latitude, mapState.longitude]"
@@ -81,22 +90,33 @@
         :lat-lng="[marker.lat, marker.lon]"
       >
         <l-popup v-if="marker.tags">
-          <ul>
-            <li v-if="marker.tags.name">
-              {{ marker.tags.name }}
-            </li>
-            <li v-if="marker.tags.recycling_type">
-              Type: {{ marker.tags.recycling_type }}
-            </li>
-            <li v-if="getRecyclingMaterials(marker.tags).length > 0">
-              Materials: {{ getRecyclingMaterials(marker.tags).join(", ") }}
-            </li>
-          </ul>
-          <a
-            :href="`https://www.google.com/maps/search/?api=1&query=${marker.lat},${marker.lon}`"
-            target="_blank"
-            >>Open on maps</a
-          >
+          <div class="popup-content">
+            <h4 v-if="marker.tags.name">{{ marker.tags.name }}</h4>
+
+            <p v-if="marker.tags.recycling_type">
+              <strong>Type :</strong>
+              {{ getRecyclingTypeTranslation(marker.tags.recycling_type) }}
+            </p>
+
+            <div v-if="getRecyclingMaterials(marker.tags).length > 0">
+              <strong>Matériaux acceptés :</strong>
+              <ul>
+                <li
+                  v-for="material in getRecyclingMaterials(marker.tags)"
+                  :key="material"
+                >
+                  {{ material }}
+                </li>
+              </ul>
+            </div>
+
+            <a
+              :href="`https://www.google.com/maps/dir/?api=1&destination=${marker.lat},${marker.lon}`"
+              target="_blank"
+              class="direction-button"
+              >M'y rendre</a
+            >
+          </div>
         </l-popup>
       </l-marker>
     </l-map>
@@ -307,6 +327,63 @@ input:checked + .slider:before {
   transition: all 0.3s;
   transform: translate(-50%, 100%);
 }
+
+.popup-content h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 1.1em;
+}
+
+.popup-content p,
+.popup-content div {
+  margin-bottom: 8px;
+}
+
+.popup-content ul {
+  list-style-type: disc;
+  padding-left: 20px;
+  margin-top: 5px;
+  margin-bottom: 0;
+}
+
+.direction-button {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background-color: #0094fc;
+  color: white !important;
+  border-radius: 5px;
+  text-decoration: none;
+  text-align: center;
+  font-weight: bold;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.direction-button:hover {
+  background-color: #007acc;
+}
+
+.locate-button {
+  background-color: white;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  border-radius: 5px;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+}
+
+.locate-button:hover {
+  background-color: #f4f4f4;
+}
+
+.locate-button svg {
+  color: #333;
+}
 </style>
 
 <script setup lang="ts">
@@ -331,7 +408,8 @@ import L, { divIcon } from "leaflet";
 import SpinnerComponent from "./SpinnerComponent.vue";
 import { useToast } from "vue-toastification";
 import SvgIcon from "@jamescoyle/vue-icon";
-import { mdiFactory, mdiTrashCanOutline } from "@mdi/js";
+import { mdiFactory, mdiTrashCanOutline, mdiCrosshairsGps } from "@mdi/js";
+import { recyclingKeyMappings } from "../services/recycling-translations";
 
 const mapLeaflet = ref(null);
 const checkedOptions: Ref<string[]> = ref([
@@ -370,10 +448,38 @@ const toast = useToast();
 
 let watchLocationID = 0;
 
+const getRecyclingTypeTranslation = (type: string | undefined) => {
+  if (!type) return type;
+  const key = `recycling_type=${type}`;
+  return (
+    recyclingKeyMappings[key] || type.charAt(0).toUpperCase() + type.slice(1)
+  );
+};
+
 const getRecyclingMaterials = (tags: OverpassTags) => {
   return Object.keys(tags)
     .filter((key) => key.startsWith("recycling:") && tags[key] === "yes")
-    .map((key) => key.replace("recycling:", ""));
+    .map((key) => recyclingKeyMappings[key])
+    .filter((value): value is string => !!value);
+};
+
+const centerOnUser = () => {
+  if (window.navigator.geolocation) {
+    window.navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const latLon = L.latLng(
+          position.coords.latitude,
+          position.coords.longitude
+        );
+        (mapState.map as any).setView(latLon, 16); // Center with a fixed zoom
+        updatePosition(position); // Update the user marker
+      },
+      errorGetLocation,
+      { enableHighAccuracy: true }
+    );
+  } else {
+    errorAuthorizeLocation();
+  }
 };
 
 const onLoad = (event: any) => {

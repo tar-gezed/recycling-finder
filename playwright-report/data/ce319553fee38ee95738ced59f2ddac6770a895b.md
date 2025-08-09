@@ -1,0 +1,94 @@
+# Page snapshot
+
+```yaml
+- main:
+  - img
+  - button:
+    - img
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - button "Marker"
+  - paragraph:
+    - strong: "Type :"
+    - text: Conteneur
+  - strong: "Matériaux acceptés :"
+  - list:
+    - listitem: Bouteilles et bocaux en verre
+  - link "M'y rendre":
+    - /url: https://www.google.com/maps/dir/?api=1&destination=45.1821485,5.7315021
+  - button "Close popup"
+  - button "Zoom in"
+  - button "Zoom out"
+  - button "Me localiser":
+    - img
+  - link "Leaflet":
+    - /url: https://leafletjs.com
+```
