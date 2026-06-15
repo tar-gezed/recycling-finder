@@ -12,5 +12,7 @@ import MapComponentComposition from "../components/MapComponentComposition.vue";
 .main-container {
   display: flex;
   flex: 1;
+  width: 100vw;
+  height: 100vh;
 }
 </style>

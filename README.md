@@ -1,6 +1,18 @@
-# Recycling Finder
+# ♻️ Recycling Finder
 
-A simple web application to find recycling centers and containers near you.
+**[🌍 Access the Live Application (PWA)](https://tar-gezed.github.io/recycling-finder)**
+
+A mobile-first web application (Progressive Web App) to easily find recycling centers and sorting containers near you. Built with **Vue 3** and **Leaflet** mapping, the app utilizes OpenStreetMap data (Overpass API) in real-time.
+
+## ✨ Features (Eco-Modern Overhaul)
+- **Native Experience**: The interface behaves like a true mobile application (full-screen, no native browser zooming, touch-friendly controls).
+- **Smart Filtering (Client-side)**: Quickly filter collection points by materials (Glass, Paper, Plastic, Clothes, Batteries) using a smooth horizontally scrolling "Chips" bar.
+- **Dynamic Markers**: Marker colors adapt to the type of waste (Emerald for glass, Yellow for plastic, Gray for mixed points, etc.).
+- **Rich Details (Mobile Bottom-Sheet & Desktop Popup)**: Instantly view the dynamic distance to the collection point, opening hours, operator, and accepted materials.
+- **Direct Routing**: One click opens your phone's native Google Maps or Apple Maps app for GPS guidance.
+- **Geolocation**: Recenters the map on your position with a single click via a floating button.
+
+---
 
 ## Recommended IDE Setup
 
