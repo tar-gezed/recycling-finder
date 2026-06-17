@@ -1,7 +1,5 @@
 import axios from "axios";
 import type { LatLng } from "leaflet";
-import type { Ref } from "vue";
-import { useToast } from "vue-toastification";
 
 export type OverpassBounds = {
   south: number;
@@ -37,9 +35,36 @@ export type OverpassOptions =
   | "recycling_type_centre"
   | "recycling_type_container";
 
+let abortController: AbortController | null = null;
+
+const ENDPOINTS = [
+  "https://www.overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter"
+];
+
+const getErrorMessage = (error: any): string => {
+  if (error.response) {
+    if (error.response.status === 429) {
+      return "Les serveurs sont surchargés (trop de requêtes). Veuillez réessayer dans quelques instants.";
+    }
+    if (error.response.status >= 500) {
+      return "Les serveurs de données sont temporairement indisponibles.";
+    }
+    return `Erreur serveur (${error.response.status}). Impossible de récupérer les données.`;
+  }
+  if (error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout')) {
+    return "La requête a pris trop de temps. Essayez de zoomer pour réduire la zone de recherche.";
+  }
+  return "Erreur réseau. Veuillez vérifier votre connexion internet.";
+};
+
 export default {
-  searchRecyclingSpots(bounds: any, options?: Ref<string[]>) {
-    const toast = useToast();
+  async searchRecyclingSpots(bounds: any, options?: string[]): Promise<OverpassElement[] | null> {
+    if (abortController) {
+      abortController.abort();
+    }
+    abortController = new AbortController();
+
     const sanitizedBounds = {
       south: bounds.getSouth(),
       north: bounds.getNorth(),
@@ -55,25 +80,36 @@ export default {
 
     let query = `[out:json];(`;
 
-    if (options?.value.includes("recycling_type_centre")) {
+    if (options?.includes("recycling_type_centre")) {
       query += `node["amenity"="recycling"]["recycling_type"="centre"](${rect});`;
     }
-    if (options?.value.includes("recycling_type_container")) {
+    if (options?.includes("recycling_type_container")) {
       query += `node["amenity"="recycling"]["recycling_type"="container"](${rect});`;
     }
 
     query += `);out body;`;
 
-    const url = `https://www.overpass-api.de/api/interpreter?data=${query}`;
-    return axios
-      .get<{ elements: OverpassElement[] }>(url)
-      .then((response) => {
-        console.log("RESPONSE", response);
-        return response.data?.elements;
-      })
-      .catch((err) => {
-        toast.error(err?.message);
-        return [];
-      });
+    let lastError: any = null;
+
+    for (const endpoint of ENDPOINTS) {
+      try {
+        const url = `${endpoint}?data=${query}`;
+        const response = await axios.get<{ elements: OverpassElement[] }>(url, {
+          timeout: 60000,
+          signal: abortController.signal
+        });
+        return response.data?.elements || [];
+      } catch (err: any) {
+        if (axios.isCancel(err)) {
+          console.log('Requête Overpass annulée:', err.message);
+          return null; // Retourne null silencieusement si la requête a été annulée
+        }
+        console.warn(`Erreur avec l'API ${endpoint}:`, err.message);
+        lastError = err;
+      }
+    }
+
+    // Si toutes les API ont échoué
+    throw new Error(getErrorMessage(lastError));
   },
 };

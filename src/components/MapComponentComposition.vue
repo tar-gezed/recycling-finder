@@ -43,46 +43,7 @@
         :fill="true"
       />
 
-      <l-marker
-        v-for="marker in filteredMarkers"
-        :key="marker.id"
-        :lat-lng="[marker.lat, marker.lon]"
-        :icon="getMarkerIcon(marker.tags)"
-        @click="onMarkerClick(marker)"
-      >
-        <l-popup v-if="!isMobile && marker.tags" :options="{ offset: [0, -24] }">
-          <div class="popup-content">
-            <h4>{{ marker.tags.name || 'Conteneur de Recyclage' }}</h4>
-            <p class="popup-distance" v-if="getDistanceText(marker)">{{ getDistanceText(marker) }}</p>
 
-            <div v-if="getRecyclingMaterials(marker.tags).length > 0" class="popup-chips">
-              <span
-                v-for="material in getRecyclingMaterials(marker.tags)"
-                :key="material"
-                class="popup-chip"
-              >
-                {{ material }}
-              </span>
-            </div>
-
-            <div v-if="marker.tags.opening_hours || marker.tags.operator" class="popup-additional-info">
-              <p v-if="marker.tags.operator"><strong>Opérateur :</strong> {{ marker.tags.operator }}</p>
-              <p v-if="marker.tags.opening_hours"><strong>Horaires :</strong> {{ marker.tags.opening_hours }}</p>
-            </div>
-
-            <a
-              :href="`https://www.google.com/maps/dir/?api=1&destination=${marker.lat},${marker.lon}`"
-              target="_blank"
-              class="direction-button"
-            >
-              <svg style="width:16px;height:16px;margin-right:6px;vertical-align:middle" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M14 20L12.5 18.5L17 14H6.5V20H4.5V12H17L12.5 7.5L14 6L21 13L14 20Z"/>
-              </svg>
-              <span style="vertical-align:middle">Y aller</span>
-            </a>
-          </div>
-        </l-popup>
-      </l-marker>
     </l-map>
 
     <!-- Bottom Sheet for Mobile -->
@@ -103,10 +64,9 @@
     </button>
 
   </div>
-  <transition name="spinner">
-    <div class="loading" v-show="loadingMarkers">
-      <div class="loading-text">Chargement des données...</div>
-      <spinner-component></spinner-component>
+  <transition name="fade">
+    <div class="top-progress-bar" v-show="loadingMarkers">
+      <div class="progress-bar-value"></div>
     </div>
   </transition>
 </template>
@@ -117,19 +77,17 @@ import {
   LTileLayer,
   LMarker,
   LCircle,
-  LControl,
   LPopup,
 } from "@vue-leaflet/vue-leaflet";
 import "leaflet/dist/leaflet.css";
-import { watch, ref, reactive, computed, onMounted, onUnmounted } from "vue";
+import { watch, ref, reactive, computed, onMounted, onUnmounted, nextTick } from "vue";
 import type { Ref } from "vue";
-import { debounce } from "lodash";
+import debounce from "lodash/debounce";
 import OverpassApi, {
   type OverpassElement,
   type OverpassTags,
 } from "../services/overpass-api";
-import L, { divIcon } from "leaflet";
-import SpinnerComponent from "./SpinnerComponent.vue";
+import L, { divIcon, type Map as LeafletMap } from "leaflet";
 import BottomSheet from "./BottomSheet.vue";
 import { useToast } from "vue-toastification";
 import SvgIcon from "@jamescoyle/vue-icon";
@@ -156,6 +114,10 @@ const isMobile = ref(false);
 const showBottomSheet = ref(false);
 const selectedMarker = ref<OverpassElement | null>(null);
 
+// LayerGroup natif Leaflet pour les marqueurs de recyclage.
+// On bypasse le v-for de vue-leaflet qui est buggé avec la réactivité.
+const markersLayerGroup = L.layerGroup();
+
 const availableFilters = [
   { id: 'glass', keys: ['recycling:glass', 'recycling:glass_bottles'], label: 'Verre', icon: mdiGlassWine },
   { id: 'paper', keys: ['recycling:paper', 'recycling:cardboard'], label: 'Papier', icon: mdiNewspaper },
@@ -166,11 +128,10 @@ const availableFilters = [
 const activeFilters = ref<string[]>([]);
 
 const toggleFilter = (id: string) => {
-  const index = activeFilters.value.indexOf(id);
-  if (index > -1) {
-    activeFilters.value.splice(index, 1);
+  if (activeFilters.value.includes(id)) {
+    activeFilters.value = activeFilters.value.filter(f => f !== id);
   } else {
-    activeFilters.value.push(id);
+    activeFilters.value = [...activeFilters.value, id];
   }
 };
 
@@ -203,7 +164,7 @@ const getMarkerColor = (tags: OverpassTags) => {
   if (hasPlastic) return '#ca8a04'; // Yellow
   if (hasClothes) return '#db2777'; // Pink
   
-  return '#059669'; // Default Primary
+  return '#6b7280'; // Default Neutral (Gris) au lieu du Vert pour ne pas confondre avec le Verre
 };
 
 const getMarkerIcon = (tags: OverpassTags) => {
@@ -229,23 +190,92 @@ const mapState = reactive({
   accuracy: 100,
   userCoords: {} as GeolocationPosition,
   bounds: null,
-  map: {},
-  recyclingMarkers: [] as OverpassElement[],
 });
+
+const recyclingMarkers = ref<OverpassElement[]>([]);
+
+const getMap = () => (mapLeaflet.value as any)?.leafletObject as LeafletMap | undefined;
 
 const toast = useToast();
 
+/**
+ * Calcule les marqueurs filtrés selon les filtres actifs.
+ * Si aucun filtre actif -> tous les marqueurs.
+ */
 const filteredMarkers = computed(() => {
-  if (activeFilters.value.length === 0) return mapState.recyclingMarkers;
+  if (activeFilters.value.length === 0) {
+    return recyclingMarkers.value;
+  }
   
   const activeKeys = availableFilters
     .filter(f => activeFilters.value.includes(f.id))
     .flatMap(f => f.keys);
 
-  return mapState.recyclingMarkers.filter(m => {
+  return recyclingMarkers.value.filter(m => {
     return activeKeys.some(key => m.tags[key] === 'yes');
   });
 });
+
+/**
+ * Met à jour le LayerGroup Leaflet natif en fonction de filteredMarkers.
+ * C'est la méthode impérative qui contourne les bugs de réactivité de vue-leaflet.
+ */
+const renderMarkersOnMap = (markers: OverpassElement[]) => {
+  markersLayerGroup.clearLayers();
+  markers.forEach(marker => {
+    const leafletMarker = L.marker([marker.lat, marker.lon], {
+      icon: getMarkerIcon(marker.tags),
+    });
+    
+    // Popup desktop
+    if (!isMobile.value && marker.tags) {
+      const materials = getRecyclingMaterials(marker.tags);
+      const chipsHtml = materials.length > 0
+        ? `<div class="popup-chips">${materials.map(m => `<span class="popup-chip">${m}</span>`).join('')}</div>`
+        : '';
+      const distanceHtml = getDistanceText(marker)
+        ? `<p class="popup-distance">${getDistanceText(marker)}</p>`
+        : '';
+      const operatorHtml = marker.tags.operator
+        ? `<p><strong>Opérateur :</strong> ${marker.tags.operator}</p>`
+        : '';
+      const hoursHtml = marker.tags.opening_hours
+        ? `<p><strong>Horaires :</strong> ${marker.tags.opening_hours}</p>`
+        : '';
+      const additionalHtml = (operatorHtml || hoursHtml)
+        ? `<div class="popup-additional-info">${operatorHtml}${hoursHtml}</div>`
+        : '';
+
+      leafletMarker.bindPopup(`
+        <div class="popup-content">
+          <h4>${marker.tags.name || 'Conteneur de Recyclage'}</h4>
+          ${distanceHtml}
+          ${chipsHtml}
+          ${additionalHtml}
+          <a href="https://www.google.com/maps/dir/?api=1&destination=${marker.lat},${marker.lon}"
+             target="_blank" class="direction-button">
+            <svg style="width:16px;height:16px;margin-right:6px;vertical-align:middle" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M14 20L12.5 18.5L17 14H6.5V20H4.5V12H17L12.5 7.5L14 6L21 13L14 20Z"/>
+            </svg>
+            <span style="vertical-align:middle">Y aller</span>
+          </a>
+        </div>
+      `, { offset: [0, -24] });
+    }
+    
+    // Click sur mobile -> BottomSheet
+    leafletMarker.on('click', () => onMarkerClick(marker));
+    
+    markersLayerGroup.addLayer(leafletMarker);
+  });
+};
+
+// Surveiller filteredMarkers et mettre à jour la carte impérativement.
+// immediate: true permet de déclencher le rendu dès que les données sont prêtes,
+// même si la carte n'est pas encore montée (le LayerGroup est attachi plus tard).
+watch(filteredMarkers, (newMarkers) => {
+  renderMarkersOnMap(newMarkers);
+}, { immediate: true });
 
 const getDistanceText = (marker: OverpassElement) => {
   if (!mapState.latitude || !mapState.longitude) return '';
@@ -268,8 +298,13 @@ onMounted(() => {
   window.addEventListener('resize', checkMobile);
 });
 
+let geoWatchId: number | null = null;
+
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile);
+  if (geoWatchId !== null && window.navigator.geolocation) {
+    window.navigator.geolocation.clearWatch(geoWatchId);
+  }
 });
 
 const getRecyclingMaterials = (tags: OverpassTags) => {
@@ -294,7 +329,7 @@ const centerOnUser = () => {
           position.coords.latitude,
           position.coords.longitude
         );
-        (mapState.map as any).setView(latLon, 16);
+        getMap()?.setView(latLon, 16);
         updatePosition(position);
       },
       errorGetLocation,
@@ -306,19 +341,27 @@ const centerOnUser = () => {
 };
 
 const onLoad = (event: any) => {
-  mapState.map = (mapLeaflet as any).value.leafletObject;
+  // Brancher le LayerGroup natif sur la carte Leaflet dès son initialisation
+  const map = getMap();
+  if (map) {
+    markersLayerGroup.addTo(map);
+  }
+
   if (window.navigator.geolocation) {
     window.navigator.geolocation.getCurrentPosition((position) => {
       const latLon = L.latLng(
         position.coords.latitude,
         position.coords.longitude
       );
-      (mapState.map as any).setView(latLon, mapState.zoom);
+      getMap()?.setView(latLon, mapState.zoom);
       updatePosition(position);
-      loadRecyclingMarkers((mapState.map as any).getBounds());
+      const bounds = getMap()?.getBounds();
+      if (bounds) {
+        loadRecyclingMarkers(bounds);
+      }
     }, errorGetLocation);
 
-    navigator.geolocation.watchPosition((position) => {
+    geoWatchId = navigator.geolocation.watchPosition((position) => {
       updatePosition(position);
     });
   } else {
@@ -329,13 +372,34 @@ const onLoad = (event: any) => {
 const loadRecyclingMarkers = async (bounds: any) => {
   mapState.bounds = bounds;
   loadingMarkers.value = true;
-  const newMarkers = await OverpassApi.searchRecyclingSpots(
-    bounds,
-    checkedOptions
-  );
-  mapState.recyclingMarkers =
-    newMarkers.length > 0 ? newMarkers : mapState.recyclingMarkers;
-  loadingMarkers.value = false;
+  
+  try {
+    const newMarkers = await OverpassApi.searchRecyclingSpots(
+      bounds,
+      checkedOptions.value
+    );
+    
+    // Si la requête a été annulée silencieusement
+    if (newMarkers === null) {
+      return;
+    }
+    
+    if (newMarkers.length === 0) {
+      toast.info("Aucun point de recyclage trouvé dans cette zone.");
+      recyclingMarkers.value = [];
+    } else {
+      recyclingMarkers.value = newMarkers;
+    }
+    
+    // Forcer le rendu impératif immédiatement après la mise à jour des données.
+    // Le watch sur filteredMarkers devrait normalement faire ça,
+    // mais on appelle renderMarkersOnMap en sécurité pour garantir l'affichage.
+    renderMarkersOnMap(filteredMarkers.value);
+  } catch (error: any) {
+    toast.error(error.message);
+  } finally {
+    loadingMarkers.value = false;
+  }
 };
 
 const updatePosition = (position: GeolocationPosition) => {
@@ -346,20 +410,25 @@ const updatePosition = (position: GeolocationPosition) => {
 };
 
 const errorGetLocation = (error: GeolocationPositionError) => {
-  // toast.error(error?.message);
+  toast.error(`Erreur de localisation: ${error?.message}`);
   console.error(error?.message, error?.code);
 };
 
 const errorAuthorizeLocation = () => {
-  toast.error("Error Location Not Authorized");
+  toast.error("La localisation n'est pas autorisée par votre navigateur.");
 };
 
-const boundsUpdated = debounce(loadRecyclingMarkers, 3000, {
+const boundsUpdated = debounce((bounds?: any) => {
+  const b = bounds || getMap()?.getBounds();
+  if (b) {
+    loadRecyclingMarkers(b);
+  }
+}, 3000, {
   leading: true,
   trailing: true,
 });
 
-watch(checkedOptions, () => boundsUpdated((mapState.map as any).getBounds()));
+watch(checkedOptions, () => boundsUpdated());
 </script>
 
 <style scoped>
@@ -458,105 +527,174 @@ watch(checkedOptions, () => boundsUpdated((mapState.map as any).getBounds()));
   height: 24px;
 }
 
-.popup-distance {
-  color: #6b7280;
-  font-size: 0.85rem;
-  margin-top: -8px;
-  margin-bottom: 12px;
-}
-
-.popup-additional-info {
-  font-size: 0.85rem;
-  color: #374151;
-  margin-bottom: 12px;
-}
-
-.popup-additional-info p {
-  margin: 2px 0;
-}
-
-.loading {
+.top-progress-bar {
   position: absolute;
-  bottom: 0;
-  z-index: 999;
-  left: 50%;
-  transform: translate(-50%, 0);
-  background-color: var(--color-primary);
-  border-radius: 15px 15px 0px 0px;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background-color: var(--color-primary-light, #d1fae5); /* Fallback vert clair */
+  z-index: 1001;
+  overflow: hidden;
+}
+
+.progress-bar-value {
+  width: 100%;
+  height: 100%;
+  background-color: var(--color-primary, #059669); /* Fallback vert foncé */
+  animation: indeterminateAnimation 1.5s infinite linear;
+  transform-origin: 0% 50%;
+}
+
+@keyframes indeterminateAnimation {
+  0% {
+    transform: translateX(0) scaleX(0);
+  }
+  40% {
+    transform: translateX(0) scaleX(0.4);
+  }
+  100% {
+    transform: translateX(100%) scaleX(0.5);
+  }
+}
+
+/* Transitions */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+</style>
+
+<style>
+/* Leaflet Popup overrides and custom styling (Desktop Mode) */
+.leaflet-popup {
+  margin-bottom: 12px;
+}
+
+.leaflet-popup-content-wrapper {
+  background-color: var(--color-background) !important;
+  color: var(--color-text) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid var(--color-border) !important;
+  padding: 16px !important;
+}
+
+.leaflet-popup-content {
+  margin: 0 !important;
+  width: 250px !important;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  line-height: 1.5 !important;
+}
+
+.leaflet-popup-tip {
+  background-color: var(--color-background) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: none !important;
+}
+
+.leaflet-popup-close-button {
+  color: var(--color-text) !important;
+  font-size: 20px !important;
+  font-weight: 300 !important;
+  top: 12px !important;
+  right: 12px !important;
+  width: 24px !important;
+  height: 24px !important;
+  line-height: 24px !important;
+  background: transparent !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: background-color 0.2s, color 0.2s !important;
+}
+
+.leaflet-popup-close-button:hover {
+  background-color: var(--color-background-mute) !important;
+  color: var(--color-heading) !important;
+}
+
+/* Custom classes inside the leaflet popup */
+.popup-content {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 12px 24px;
-  box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.2);
-}
-
-.loading-text {
-  text-align: center;
-  color: #fff;
-  font-weight: 500;
-}
-
-.popup-content {
-  padding: 4px;
-  min-width: 200px;
+  gap: 12px;
 }
 
 .popup-content h4 {
-  margin-top: 0;
-  margin-bottom: 12px;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--color-heading);
+  margin: 0 !important;
+  font-size: 1.25rem !important;
+  font-weight: 700 !important;
+  color: var(--color-heading) !important;
+  line-height: 1.3 !important;
+}
+
+.popup-distance {
+  margin: -6px 0 0 0 !important;
+  font-size: 0.9rem !important;
+  color: #6b7280 !important; /* gray-500 */
 }
 
 .popup-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 16px;
+  margin: 4px 0 !important;
 }
 
 .popup-chip {
-  background-color: var(--color-primary-light);
-  color: var(--color-primary-dark);
-  padding: 4px 8px;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  background-color: var(--color-primary-light) !important;
+  color: var(--color-primary-dark) !important;
+  padding: 6px 12px !important;
+  border-radius: 9999px !important;
+  font-size: 0.8rem !important;
+  font-weight: 500 !important;
+  white-space: nowrap;
+}
+
+.popup-additional-info {
+  margin: 0 !important;
+  font-size: 0.9rem !important;
+  color: var(--color-text) !important;
+  border-top: 1px solid var(--color-border) !important;
+  padding-top: 10px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.popup-additional-info p {
+  margin: 0 !important;
 }
 
 .direction-button {
-  display: block;
-  width: 100%;
-  padding: 10px;
-  background-color: #2563eb; /* blue-600 */
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  width: 100% !important;
+  padding: 12px !important;
+  background-color: #2563eb !important; /* blue-600 */
   color: white !important;
-  border-radius: 8px;
-  text-decoration: none;
-  text-align: center;
-  font-weight: 600;
-  transition: background-color 0.3s;
+  border-radius: 12px !important;
+  text-decoration: none !important;
+  font-weight: 600 !important;
+  font-size: 0.95rem !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25) !important;
+  transition: background-color 0.2s, transform 0.1s !important;
+  margin-top: 4px !important;
 }
 
 .direction-button:hover {
-  background-color: #1d4ed8;
+  background-color: #1d4ed8 !important; /* blue-700 */
+  text-decoration: none !important;
 }
 
-/* Transitions */
-.spinner-enter-active,
-.spinner-leave-active,
-.spinner-enter-to {
-  transition: all 0.3s;
-}
-.spinner-enter,
-.spinner-leave-to {
-  transition: all 0.3s;
-  transform: translate(-50%, 100%);
-}
-
-/* Leaflet Overrides */
-:deep(.leaflet-popup-content-wrapper) {
-  border-radius: 16px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+.direction-button:active {
+  transform: scale(0.98) !important;
 }
 </style>

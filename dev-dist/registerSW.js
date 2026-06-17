@@ -1,4 +1,0 @@
-if ("serviceWorker" in navigator)
-  navigator.serviceWorker.register("/recycling-finder/dev-sw.js?dev-sw", {
-    scope: "/recycling-finder/",
-  });
