@@ -373,6 +373,8 @@ const loadRecyclingMarkers = async (bounds: any) => {
   mapState.bounds = bounds;
   loadingMarkers.value = true;
   
+  let wasCancelled = false;
+
   try {
     const newMarkers = await OverpassApi.searchRecyclingSpots(
       bounds,
@@ -381,6 +383,7 @@ const loadRecyclingMarkers = async (bounds: any) => {
     
     // Si la requête a été annulée silencieusement
     if (newMarkers === null) {
+      wasCancelled = true;
       return;
     }
     
@@ -398,7 +401,9 @@ const loadRecyclingMarkers = async (bounds: any) => {
   } catch (error: any) {
     toast.error(error.message);
   } finally {
-    loadingMarkers.value = false;
+    if (!wasCancelled) {
+      loadingMarkers.value = false;
+    }
   }
 };
 
